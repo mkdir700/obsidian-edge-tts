@@ -1,4 +1,4 @@
-import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
+import { createTTSClient, OUTPUT_FORMAT, getVoiceForSettings } from './tts-client-wrapper';
 
 // Create a ProsodyOptions class that matches the old API
 class ProsodyOptions {
@@ -90,8 +90,12 @@ export class TTSEngine {
       throw new Error('No readable text after filtering');
     }
 
+    if (this.settings.ttsEngine === 'deepgram' && !this.settings.deepgramApiKey.trim()) {
+      throw new Error('Deepgram API key is missing. Add it in the plugin settings.');
+    }
+
     const taskId = `tts-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
+    const voiceToUse = getVoiceForSettings(this.settings);
 
     const task: TTSTask = {
       id: taskId,
@@ -139,7 +143,7 @@ export class TTSEngine {
     this.tasks.set(taskId, task);
 
     try {
-      const tts = new EdgeTTSClient();
+      const tts = createTTSClient(this.settings);
       await tts.setMetadata(task.voice, task.outputFormat);
 
       const prosodyOptions = new ProsodyOptions();
@@ -280,9 +284,13 @@ export class TTSEngine {
         throw new Error('No readable text after filtering');
       }
 
-      const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
+      if (this.settings.ttsEngine === 'deepgram' && !this.settings.deepgramApiKey.trim()) {
+        throw new Error('Deepgram API key is missing. Add it in the plugin settings.');
+      }
 
-      const tts = new EdgeTTSClient();
+      const voiceToUse = getVoiceForSettings(this.settings);
+
+      const tts = createTTSClient(this.settings);
       await tts.setMetadata(voiceToUse, OUTPUT_FORMAT.WEBM_24KHZ_16BIT_MONO_OPUS);
 
       const prosodyOptions = new ProsodyOptions();

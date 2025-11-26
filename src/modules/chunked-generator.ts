@@ -1,4 +1,4 @@
-import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
+import { createTTSClient, OUTPUT_FORMAT, getVoiceForSettings } from './tts-client-wrapper';
 
 // Create a ProsodyOptions class that matches the old API
 class ProsodyOptions {
@@ -120,6 +120,11 @@ export class ChunkedGenerator {
    * Check if text needs to be chunked (exceeds 4096 bytes)
    */
   static needsChunking(text: string, settings?: EdgeTTSPluginSettings): boolean {
+    // Deepgram does not have the same strict per-request size limits as Edge
+    if (settings?.ttsEngine === 'deepgram') {
+      return false;
+    }
+
     // Clean the text first to get accurate byte size
     const cleanText = settings ?
       filterMarkdown(
@@ -209,7 +214,7 @@ export class ChunkedGenerator {
       });
 
       // Phase 2: Generate audio for each chunk
-      const voiceToUse = settings.customVoice.trim() || settings.selectedVoice;
+      const voiceToUse = getVoiceForSettings(settings);
       const outputFormat = OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3;
 
       const prosodyOptions = new ProsodyOptions();
@@ -230,7 +235,7 @@ export class ChunkedGenerator {
           // Trigger progress recalculation
           progressManager.updateState({});
 
-          const tts = new EdgeTTSClient();
+          const tts = createTTSClient(settings);
           await tts.setMetadata(voiceToUse, outputFormat);
 
           const readable = tts.toStream(chunk.text, prosodyOptions);

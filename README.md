@@ -19,11 +19,12 @@
 
 ## Overview
 
-The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://obsidian.md/) that allows you to read your notes aloud using Microsoft's Edge TTS API. It supports a variety of voices and locales, making it an excellent tool for users who want to listen to their notes while multitasking or to improve accessibility.
+The **Obsidian Edge TTS Plugin** is a community plugin for [Obsidian](https://obsidian.md/) that allows you to read your notes aloud using Microsoft's Edge TTS API or Deepgram's TTS (with your own API key). It supports a variety of voices and locales, making it an excellent tool for users who want to listen to their notes while multitasking or to improve accessibility.
 
 ## Features
 
 -   **🔥 NEW: Native Mobile Support** - Now works on both Obsidian Desktop and Obsidian Mobile (iOS/Android)
+-   Choose between Edge TTS (built-in) or Deepgram (bring your own API key)
 -   Read selected text or entire notes aloud
 -   Choose from a list of top voices or specify a custom voice
 -   Adjust playback speed of voice over
@@ -64,6 +65,8 @@ To access the plugin settings:
 
     - **Select voice**: Choose from a list of top voices.
     - **Custom voice**: Manually enter a custom voice.
+    - **TTS engine**: Switch between the built-in Edge engine or Deepgram (requires your API key).
+    - **Deepgram API key / model**: Provide your Deepgram token and Aura model (e.g., `aura-asteria-en`) when using the Deepgram engine.
     - **Playback speed**: Adjust playback speed multiplier.
     - **Show notices**: Toggle notices for playback status and errors.
     - **Show status bar button**: Toggle playback button in status bar.

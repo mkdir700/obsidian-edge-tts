@@ -1,6 +1,6 @@
 import { EdgeTTSPluginSettings } from './settings';
 import { Notice, Platform } from 'obsidian';
-import { UniversalTTSClient as EdgeTTSClient, OUTPUT_FORMAT, createProsodyOptions } from './tts-client-wrapper';
+import { createTTSClient, OUTPUT_FORMAT, getVoiceForSettings } from './tts-client-wrapper';
 import { filterFrontmatter, filterMarkdown, shouldShowNotices, checkAndTruncateContent, toArrayBuffer } from '../utils';
 import { ChunkedGenerator } from './chunked-generator';
 
@@ -569,7 +569,7 @@ export class AudioPlaybackManager {
     const textByteSize = new Blob([cleanText]).size;
     const MAX_TTS_BYTES = 4096 - 100; // Safety buffer for encoding differences
 
-    if (textByteSize > MAX_TTS_BYTES) {
+    if (this.settings.ttsEngine !== 'deepgram' && textByteSize > MAX_TTS_BYTES) {
       // Text is too long, need to process in chunks
       await this.processChunkedPlayback(cleanText, activePlaybackAttemptId, useMSE);
       return;
@@ -674,8 +674,12 @@ export class AudioPlaybackManager {
       }
       this.updateStatusBarCallback(true);
 
-      const tts = new EdgeTTSClient();
-      const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
+      if (this.settings.ttsEngine === 'deepgram' && !this.settings.deepgramApiKey.trim()) {
+        throw new Error('Deepgram API key is missing. Add it in the plugin settings.');
+      }
+
+      const tts = createTTSClient(this.settings);
+      const voiceToUse = getVoiceForSettings(this.settings);
       await tts.setMetadata(voiceToUse, outputFormat);
 
       const prosodyOptions = new ProsodyOptions();
@@ -709,7 +713,8 @@ export class AudioPlaybackManager {
     } catch (error) {
       console.error('Error processing TTS stream:', error);
       if (this.currentPlaybackId === activePlaybackAttemptId) {
-        if (this.settings.showNotices) new Notice('Failed to read note aloud.');
+        const errorMessage = error instanceof Error ? error.message : 'Failed to read note aloud.';
+        if (this.settings.showNotices) new Notice(errorMessage);
         this.stopPlaybackInternal();
       }
     }
@@ -1579,8 +1584,8 @@ export class AudioPlaybackManager {
   private async processChunkMSE(chunk: string, activePlaybackAttemptId: number, isFirstChunk: boolean): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const tts = new EdgeTTSClient();
-        const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
+        const tts = createTTSClient(this.settings);
+        const voiceToUse = getVoiceForSettings(this.settings);
 
         tts.setMetadata(voiceToUse, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3).then(() => {
           const prosodyOptions = new ProsodyOptions();
@@ -1628,8 +1633,8 @@ export class AudioPlaybackManager {
   private async processChunkFallback(chunk: string, activePlaybackAttemptId: number, isFirstChunk: boolean): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const tts = new EdgeTTSClient();
-        const voiceToUse = this.settings.customVoice.trim() || this.settings.selectedVoice;
+        const tts = createTTSClient(this.settings);
+        const voiceToUse = getVoiceForSettings(this.settings);
 
         tts.setMetadata(voiceToUse, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3).then(() => {
           const prosodyOptions = new ProsodyOptions();

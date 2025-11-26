@@ -12,9 +12,14 @@ const appleAppStoreIconSvg = require('../assets/apple-app-store.svg');
 
 // Settings interface and default settings
 export interface EdgeTTSPluginSettings {
+  ttsEngine: 'edge' | 'deepgram';
+
   selectedVoice: string;
   customVoice: string;
   playbackSpeed: number;
+
+  deepgramApiKey: string;
+  deepgramModel: string;
 
   showNotices: boolean;
   showStatusBarButton: boolean;
@@ -85,9 +90,13 @@ export const TOP_VOICES = [
 ];
 
 export const DEFAULT_SETTINGS: EdgeTTSPluginSettings = {
+  ttsEngine: 'edge',
   selectedVoice: 'en-US-AvaNeural',
   customVoice: '',
   playbackSpeed: 1.0,
+
+  deepgramApiKey: '',
+  deepgramModel: 'aura-asteria-en',
 
   showNotices: true,
   showStatusBarButton: true,
@@ -169,6 +178,21 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
 
     inbetweenInfo.appendChild(infoText)
 
+    // Engine selection
+    new Setting(containerEl)
+      .setName('TTS engine')
+      .setDesc('Choose the provider used for speech generation.')
+      .addDropdown(dropdown => {
+        dropdown.addOption('edge', 'Microsoft Edge (default)');
+        dropdown.addOption('deepgram', 'Deepgram (requires API key)');
+        dropdown.setValue(this.plugin.settings.ttsEngine);
+        dropdown.onChange(async (value: 'edge' | 'deepgram') => {
+          this.plugin.settings.ttsEngine = value;
+          await this.plugin.saveSettings();
+          this.display(); // Rerender to show relevant options
+        });
+      });
+
     // Dropdown for top voices
     new Setting(containerEl)
       .setName('Select voice')
@@ -202,7 +226,33 @@ export class EdgeTTSPluginSettingTab extends PluginSettingTab {
         text.setPlaceholder('e.g., fr-FR-HenriNeural');
         text.setValue(this.plugin.settings.customVoice);
         text.onChange(async (value) => {
-          this.plugin.settings.customVoice = value;
+        this.plugin.settings.customVoice = value;
+        await this.plugin.saveSettings();
+      });
+    });
+
+    // Deepgram settings (shown regardless of engine so users can pre-fill)
+    new Setting(containerEl)
+      .setName('Deepgram API key')
+      .setDesc('Stored locally. Required when using the Deepgram engine.')
+      .addText(text => {
+        text.setPlaceholder('dg_xxxx...');
+        text.inputEl.type = 'password';
+        text.setValue(this.plugin.settings.deepgramApiKey);
+        text.onChange(async (value) => {
+          this.plugin.settings.deepgramApiKey = value.trim();
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName('Deepgram model')
+      .setDesc('Aura voice model, e.g., aura-asteria-en.')
+      .addText(text => {
+        text.setPlaceholder('aura-asteria-en');
+        text.setValue(this.plugin.settings.deepgramModel);
+        text.onChange(async (value) => {
+          this.plugin.settings.deepgramModel = value.trim() || 'aura-asteria-en';
           await this.plugin.saveSettings();
         });
       });

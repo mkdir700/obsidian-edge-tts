@@ -1,4 +1,10 @@
 import { Platform } from 'obsidian';
+import type { EdgeTTSPluginSettings } from './settings';
+
+export interface TTSClient {
+  setMetadata(voice: string, format: string): Promise<void>;
+  toStream(text: string, prosodyOptions?: any): any;
+}
 
 // Environment detection
 const isMobile = Platform.isMobile;
@@ -83,10 +89,111 @@ export function createProsodyOptions(rate?: number): any {
 }
 
 /**
+ * Basic stream adapter used to normalize streaming responses into the Node-like interface
+ * the rest of the plugin expects.
+ */
+class SimpleStreamAdapter {
+  private listeners: Map<string, Array<(...args: any[]) => void>> = new Map();
+  private hasEnded = false;
+
+  on(event: string, callback: (...args: any[]) => void) {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
+    }
+    this.listeners.get(event)!.push(callback);
+
+    // Immediately fire end event callbacks if the stream already ended
+    if (event === 'end' && this.hasEnded) {
+      callback();
+    }
+  }
+
+  emit(event: string, ...args: any[]) {
+    if (event === 'end') {
+      this.hasEnded = true;
+    }
+    const callbacks = this.listeners.get(event) || [];
+    callbacks.forEach((callback) => callback(...args));
+  }
+}
+
+class DeepgramTTSClient implements TTSClient {
+  private apiKey: string;
+  private model: string;
+  private format: 'mp3' | 'opus' = 'mp3';
+  private baseUrl: string;
+
+  constructor(options: { apiKey: string; model?: string; baseUrl?: string }) {
+    this.apiKey = (options.apiKey || '').trim();
+    this.model = (options.model || 'aura-asteria-en').trim();
+    this.baseUrl = (options.baseUrl || 'https://api.deepgram.com').replace(/\/+$/, '');
+  }
+
+  async setMetadata(voice: string, format: string): Promise<void> {
+    if (voice?.trim()) {
+      this.model = voice.trim();
+    }
+    this.format = format && format.toLowerCase().includes('opus') ? 'opus' : 'mp3';
+  }
+
+  toStream(text: string, prosodyOptions?: any): any {
+    if (!this.apiKey) {
+      throw new Error('Deepgram API key is not set. Add it in the plugin settings.');
+    }
+
+    const streamAdapter = new SimpleStreamAdapter();
+    const url = `${this.baseUrl}/v1/speak?model=${encodeURIComponent(this.model)}&encoding=${this.format}`;
+
+    const requestBody: Record<string, any> = { text };
+    if (prosodyOptions && typeof prosodyOptions.rate === 'number' && prosodyOptions.rate > 0 && prosodyOptions.rate !== 1) {
+      requestBody.speed = prosodyOptions.rate;
+    }
+
+    (async () => {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Deepgram TTS request failed (${response.status}: ${response.statusText})`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('Deepgram response stream is not readable.');
+        }
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            streamAdapter.emit('data', value);
+          }
+        }
+
+        streamAdapter.emit('end');
+      } catch (error) {
+        console.error('Deepgram TTS streaming error:', error);
+        streamAdapter.emit('error', error);
+        streamAdapter.emit('end');
+      }
+    })();
+
+    return streamAdapter;
+  }
+}
+
+/**
  * Universal TTS Client that provides a consistent API across platforms
  * Adapts the new edge-tts-universal API to match the old edge-tts-client API
  */
-export class UniversalTTSClient {
+export class UniversalTTSClient implements TTSClient {
   private CommunicateClass: any;
   private currentVoice?: string;
   private currentFormat?: string;
@@ -217,4 +324,21 @@ export class UniversalTTSClient {
       throw new Error(`Failed to create TTS stream: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-} 
+}
+
+export function createTTSClient(settings: EdgeTTSPluginSettings): TTSClient {
+  if (settings.ttsEngine === 'deepgram') {
+    return new DeepgramTTSClient({
+      apiKey: settings.deepgramApiKey,
+      model: getVoiceForSettings(settings)
+    });
+  }
+  return new UniversalTTSClient();
+}
+
+export function getVoiceForSettings(settings: EdgeTTSPluginSettings): string {
+  if (settings.ttsEngine === 'deepgram') {
+    return (settings.deepgramModel || 'aura-asteria-en').trim() || 'aura-asteria-en';
+  }
+  return settings.customVoice.trim() || settings.selectedVoice;
+}
